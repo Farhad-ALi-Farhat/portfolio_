@@ -27,6 +27,12 @@ export function getProjectSlugs(): string[] {
     .map((f) => f.replace(/\.mdx$/, ""));
 }
 
+export function getFeaturedProjects(): ProjectMeta[] {
+  return getProjectSlugs()
+    .map((slug) => getProject(slug).meta)
+    .filter((meta) => meta.featured);
+}
+
 export function getProject(slug: string) {
   const raw = fs.readFileSync(path.join(projectsDir, `${slug}.mdx`), "utf8");
   const { data, content } = matter(raw);
