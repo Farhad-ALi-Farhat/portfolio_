@@ -4,7 +4,8 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
-
+import { siteUrl } from "@/lib/site";
+import { profile } from "@/data/profile";
 
 const inter = Inter({subsets:['latin'],variable:'--font-sans'});
 
@@ -19,12 +20,20 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: {
-    default: "Farhad Ali Farhat | AI/ML Engineer",
-    template: "%s | Farhad Ali Farhat",
+    default: `${profile.name} | ${profile.title}`,
+    template: `%s | ${profile.name}`,
   },
-  description:
-    "AI/ML engineer building production LLM systems: agents, webhooks, cloud deployment.",
+  description: profile.tagline,
+  openGraph: {
+    title: `${profile.name} | ${profile.title}`,
+    description: profile.tagline,
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
