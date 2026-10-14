@@ -33,9 +33,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={cn("h-full", "antialiased", geistSans.variable, geistMono.variable, "font-sans", inter.variable)}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="flex min-h-screen flex-col">
           <SiteHeader />
-          <main className="mx-auto w-full max-w-3xl px-6 py-12">{children}</main>
+          <main className="mx-auto w-full max-w-3xl px-6 py-12 flex-1">{children}</main>
           <SiteFooter />
       </body>
     </html>

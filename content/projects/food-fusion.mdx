@@ -1,0 +1,126 @@
+---
+title: "Food Fusion: WhatsApp ordering assistant"
+slug: food-fusion
+summary: "An LLM-powered WhatsApp assistant that takes restaurant orders in English and Roman Urdu. Staff approve each order with one tap. The model interprets language; deterministic code owns prices, state and every database write."
+status: live            # live on a dedicated WhatsApp Business number; tested by 5-10 people
+role: "Solo: design, backend, deployment"
+period: "TODO: start month - Oct 2026"
+stack: [Python, FastAPI, LangChain, Groq, Gemini, PostgreSQL (Supabase), SQLAlchemy, Azure App Service, GitHub Actions, WhatsApp Cloud API]
+repo: "TODO: github.com/Farhad-ALi-Farhat/<repo>"
+demo: "TODO: /videos/food-fusion-demo.mp4"
+featured: true
+---
+
+## Summary
+
+Customers browse a menu and build an order in natural language (English or Roman Urdu) over WhatsApp. When they confirm their cart, staff get an Approve/Decline button message. One tap confirms or rejects the order and the customer is notified.
+
+It runs on Azure App Service, deploys from GitHub on every push to `main`, and is live on a dedicated WhatsApp Business number through the Cloud API. About 5-10 people have tested it so far, so I describe it as live and tested, not as serving production traffic.
+
+{/* TODO: demo video here (60-90s: order -> submit -> staff approval -> confirmation). Blur or fake any real names and numbers. */}
+
+## The problem
+
+Restaurant ordering over WhatsApp is usually a person reading messages and typing prices by hand. I wanted to automate the conversation (menu questions, cart building, bundle sizes, customisations) without letting an LLM near anything that has to be correct: prices, availability and order state.
+
+{/* TODO: one or two sentences on the real-world context (which restaurant / why this use case). Only say what you're comfortable publishing. */}
+
+## Architecture
+
+```mermaid
+flowchart LR
+  P[Customer / staff phone] --> M[Meta WhatsApp Cloud API]
+  M -- "HTTPS, HMAC-signed" --> F[FastAPI on Azure App Service]
+  F --> V{Verify signature, dedupe, identify role}
+  V --> C[Customer agent]
+  V --> A[Admin agent / button handler]
+  C & A --> T[Tool functions: plain Python + SQLAlchemy]
+  T --> D[(PostgreSQL / Supabase)]
+  C & A --> L1[Groq gpt-oss-20b]
+  L1 -. on error .-> L2[Gemini flash-lite]
+  F --> M
+```
+
+*(Replace with a hand-drawn or Excalidraw SVG for the final site.)*
+
+The webhook verifies the signature, acknowledges immediately, and does the real work in a background task: deduplicate, identify the sender and role, load recent chat history, then route to the customer or admin agent. Each agent runs a LangChain tool-calling loop against plain Python tool functions that read and write PostgreSQL.
+
+## Key decisions and trade-offs
+
+**1. The LLM interprets; the application decides.** The model turns language into tool calls. Prices, totals, availability, order state, roles and every write are deterministic code. The model can't compute a price, mark an item available or confirm an order. Tools are closures bound to the database session and customer id, so the model can't choose whose cart to modify.
+
+**2. A human confirms every order, and the confirmation path has no LLM in it.** My first design let the admin agent confirm orders through chat. In testing it was fragile: it depended on the model chaining "fetch pending orders", "disambiguate" and "confirm" correctly in one turn. I moved confirmation to Approve/Decline buttons handled directly in the webhook with plain Python. The handler re-checks that the sender is an admin and that the order is still pending.
+
+**3. HMAC verification on the raw request bytes.** Meta signs each webhook with HMAC-SHA256. I verify over the raw body, not re-serialised JSON (which can change the bytes). Without this, anyone who found the URL could forge a message from any phone number, including a fake admin approval.
+
+**4. Provider fallback per model call.** Groq `gpt-oss-20b` is the primary and Gemini flash-lite is the fallback, wired in as middleware around each individual call, so a multi-step turn survives a mid-turn provider failure. I got here after hitting rate-limit (429) and capacity (503) errors in live testing.
+
+**5. A database-grounded fallback reply, after a bug that duplicated cart items.** With `gpt-oss-120b` as primary, replies sometimes degenerated into hundreds of lines of garbled text right after a successful `add_to_cart`. My first guard replaced those with a generic "please try again". That made it worse: the tool call had already succeeded, the customer retried, and one test cart ended up with 4× the same item from two messages. The fix was to build the fallback from the real cart in the database, so the customer sees true state instead of being invited to repeat an action. I also switched the primary back to the 20B model, which was clean on the same trigger phrases. I never found the root cause of the 120B behaviour, and the notes say so.
+
+**6. Detect order submission from database state, not from model text.** I snapshot the customer's pending orders before the turn and compare after. A new `pending_confirmation` order means `submit_order` really ran, and that triggers the admin notification. The model's claim that it submitted something is never trusted.
+
+**7. A hybrid admin notification because of WhatsApp's 24-hour window.** Free-form messages are only allowed within 24 hours of the recipient's last message; outside it you must use paid, pre-approved templates. Two separate failures taught me this: error `131047` (free-form outside the window, returned as HTTP 200 and reported later through the status webhook) and `131042` (no payment method on the business account). The app now sends interactive buttons when the admin's window is open and falls back to a template when it isn't. I haven't attached a payment method, so the template path is currently disabled: if the admin hasn't messaged the bot in the last 24 hours, they need to send it any message before the next notice can be delivered. That is an accepted trade-off at this scale, not an oversight.
+
+**8. Smallest managed hosting, and deliberately no containers.** Azure App Service gives a stable HTTPS URL, managed settings and restarts, and nothing to operate. I skipped Business Verification and App Review on purpose: for one business using its own app they aren't required, and the consequence is a cap of 250 unique customer conversations per 24 hours, which is fine at this scale.
+
+## Failure handling
+
+| Failure | How it's handled |
+|---|---|
+| Forged or tampered webhook | 403 on signature mismatch |
+| Meta redelivers a message | Dedupe on WhatsApp message id, unique constraint as backstop |
+| Ambiguous order ("add malai boti") | Prompt rule: ask which item, never guess |
+| Invalid quantity (bundle sizes) | Rejected in code with an error the model explains |
+| Primary model error | Same call retried on the fallback provider |
+| Empty or garbled model output | Replaced with a reply built from the real cart |
+| Agent crashes | Try/except returns a safe message; the customer is never left without a reply |
+| Message accepted, then fails to deliver | Delivery-status webhooks are logged, which is how `131047` and `131042` were found |
+| Customer or admin text trying to change roles | Role comes from a backend lookup, never from message content |
+
+## Deployment
+
+- Azure App Service (Linux, B1), Python 3.13, deployed by GitHub Actions on every push to `main`.
+- Secrets live in App Service application settings, read through `pydantic-settings`; no `.env` in production.
+- `requirements.txt` is pinned to exact versions and verified in a clean virtual environment.
+
+The most useful debugging story: every region I tried showed zero compute quota. A Free Trial subscription has no compute quota and can't request more, so I upgraded to Pay-As-You-Go. Two regions still showed zero afterwards, and a third (Central US) worked. I traced the first problem to the subscription offer type and the second to per-region allocation plus propagation delay after the upgrade, which looked like a permissions problem but wasn't.
+
+## What I verified live
+
+All of this was tested through the real webhook and real WhatsApp, not just in a Python shell:
+
+- Signature rejection and duplicate-message dedupe
+- Ambiguity handling, bundle-size enforcement and correct bundle pricing
+- Admin marks an item unavailable, and the customer is correctly blocked from ordering it
+- A forced Groq-to-Gemini fallback under real conditions
+- Roman Urdu orders, including a customisation note that reached the admin notice
+- Approve button: order confirmed, customer notified, database row updated
+- The full loop on Azure and on the dedicated registered number in Live mode
+- The Decline button path, and image/voice messages after a parsing fix
+
+Known limitation, by choice: the template fallback is not enabled. I haven't attached a payment method to the WhatsApp Business account and don't plan to at this scale, so admin notices depend on the admin having messaged the bot within the last 24 hours.
+
+## Results
+
+{/* Only keep numbers you have actually measured. */}
+
+| Measure | Value |
+|---|---|
+| People who tested it | 5-10 |
+| Hosting cost | about $11/month forecast on the Azure portal (fixed plan price; nearly independent of traffic at this scale) |
+| Typical reply latency | 10-15 s. Every message runs a multi-step LLM tool-calling loop; not yet profiled per stage |
+| Fallback trigger rate | Rare; seen mostly with Roman Urdu input |
+| Order understanding | Informal estimate from manual testing: roughly 90%+ of messages handled correctly. I did not see it add a different item than the one requested; the misses were the assistant asking the user to rephrase |
+| LLM and WhatsApp cost | $0 so far: both LLM providers on free tiers, no WhatsApp billing attached |
+
+Latency and accuracy figures come from manual testing, not a benchmark.
+
+## What I'd change next
+
+1. **Durable processing.** Background tasks are in-process, so a restart mid-turn can drop an already-acknowledged message. A queue and worker would fix that.
+2. **Idempotent write tools.** A per-turn key on cart-changing tools would make retries safe by construction, instead of relying on the fallback reply.
+3. **An evaluation set** (ambiguity, pricing, Roman Urdu) run on every model or prompt change.
+4. **Observability:** Application Insights for the service and LLM tracing for model calls. I also still need to capture the body of an occasional undiagnosed Groq `400` error.
+5. **Deployment hardening:** a health check, OIDC credentials instead of the publish-profile secret, and the Supabase CA certificate instead of disabling certificate verification on the database connection.
+6. **Latency:** profile each stage (model calls, database round-trips, cold starts) and cut avoidable calls, for example by persisting tool results so the model stops re-searching for item ids each turn.
+7. **Admin notices outside the 24-hour window:** needs the template path (a payment method) or another channel; today it relies on the admin messaging the bot first.
