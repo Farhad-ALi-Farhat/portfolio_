@@ -11,8 +11,8 @@ const projectSchema = z.object({
   role: z.string(),
   period: z.string(),
   stack: z.array(z.string()),
-  repo: z.string(),
-  demo: z.string(),
+  repo: z.string().url(),
+  demo: z.string().optional(),
   featured: z.boolean().default(false),
 });
 

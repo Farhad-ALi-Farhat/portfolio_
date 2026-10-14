@@ -4,10 +4,9 @@ slug: food-fusion
 summary: "An LLM-powered WhatsApp assistant that takes restaurant orders in English and Roman Urdu. Staff approve each order with one tap. The model interprets language; deterministic code owns prices, state and every database write."
 status: live            # live on a dedicated WhatsApp Business number; tested by 5-10 people
 role: "Solo: design, backend, deployment"
-period: "TODO: start month - Oct 2026"
+period: "Oct 2026 – Present"
 stack: [Python, FastAPI, LangChain, Groq, Gemini, PostgreSQL (Supabase), SQLAlchemy, Azure App Service, GitHub Actions, WhatsApp Cloud API]
-repo: "TODO: github.com/Farhad-ALi-Farhat/<repo>"
-demo: "TODO: /videos/food-fusion-demo.mp4"
+repo: "https://github.com/Farhad-ALi-Farhat/food-fusion"
 featured: true
 ---
 
@@ -27,21 +26,7 @@ Restaurant ordering over WhatsApp is usually a person reading messages and typin
 
 ## Architecture
 
-```mermaid
-flowchart LR
-  P[Customer / staff phone] --> M[Meta WhatsApp Cloud API]
-  M -- "HTTPS, HMAC-signed" --> F[FastAPI on Azure App Service]
-  F --> V{Verify signature, dedupe, identify role}
-  V --> C[Customer agent]
-  V --> A[Admin agent / button handler]
-  C & A --> T[Tool functions: plain Python + SQLAlchemy]
-  T --> D[(PostgreSQL / Supabase)]
-  C & A --> L1[Groq gpt-oss-20b]
-  L1 -. on error .-> L2[Gemini flash-lite]
-  F --> M
-```
-
-*(Replace with a hand-drawn or Excalidraw SVG for the final site.)*
+![Food Fusion architecture: WhatsApp Cloud API to FastAPI on Azure, agents with tools, Supabase, and Groq with Gemini fallback](/images/food-fusion-architecture.png)
 
 The webhook verifies the signature, acknowledges immediately, and does the real work in a background task: deduplicate, identify the sender and role, load recent chat history, then route to the customer or admin agent. Each agent runs a LangChain tool-calling loop against plain Python tool functions that read and write PostgreSQL.
 
