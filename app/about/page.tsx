@@ -8,6 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { profile } from "@/data/profile";
+import { DownloadCvButton } from "@/components/download-cv-button";
 
 export const metadata: Metadata = { title: "About" };
 
@@ -17,6 +18,7 @@ export default function AboutPage() {
       <section className="space-y-4">
         <h1 className="text-3xl font-bold tracking-tight">About</h1>
         <p className="text-muted-foreground">{profile.summary}</p>
+        <DownloadCvButton />
       </section>
 
       <section className="space-y-6">
@@ -87,6 +89,19 @@ export default function AboutPage() {
             <span className="text-sm text-muted-foreground">{e.period}</span>
           </div>
         ))}
+      </section>
+      <section className="space-y-2">
+        <h2 className="text-xl font-semibold">Get in touch</h2>
+        <p className="text-muted-foreground">
+          Open to AI/ML and LLM engineering roles. The best way to reach me is
+          email:{" "}
+          <a
+            href={`mailto:${profile.email}`}
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            {profile.email}
+          </a>
+        </p>
       </section>
     </div>
   );

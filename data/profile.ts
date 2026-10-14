@@ -4,6 +4,7 @@ export const profile = {
   tagline:
     "AI/ML engineer building production LLM systems: agents, webhooks, cloud deployment.",
   location: "Lahore, Pakistan",
+  email: "farhadalifarhat@gmail.com",
   links: {
     github: "https://github.com/Farhad-ALi-Farhat",
     linkedin: "https://linkedin.com/in/farhad-ali-farhat",

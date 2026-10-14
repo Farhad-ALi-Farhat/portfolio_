@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DownloadCvButton } from "@/components/download-cv-button";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -41,6 +42,7 @@ export default function Home() {
           >
             LinkedIn
           </a>
+          <DownloadCvButton />
         </div>
       </section>
 
